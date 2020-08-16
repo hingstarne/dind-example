@@ -1,51 +1,32 @@
 pipeline {
-    options {
-        disableConcurrentBuilds()
-    }
-    agent {
-        kubernetes {
-            label 'docker-in-docker-maven'
-            yaml """
-apiVersion: v1
+  agent {
+    kubernetes {
+      //cloud 'kubernetes'
+      yaml """
 kind: Pod
+metadata:
+  name: kaniko
 spec:
-containers:
-- name: docker-client
-  image: docker:dind
-  command: ['sleep', '99d']
-  env:
-    - name: DOCKER_HOST
-      value: tcp://localhost:2375
-- name: docker-daemon
-  image: docker:19.03.1-dind
-  env:
-    - name: DOCKER_TLS_CERTDIR
-      value: ""
-  securityContext:
-    privileged: true
-  volumeMounts:
-      - name: cache
-        mountPath: /var/lib/docker
-volumes:
-  - name: cache
-    hostPath:
-      path: /tmp
-      type: Directory
+  containers:
+  - name: kaniko
+    image: gcr.io/kaniko-project/executor:debug-539ddefcae3fd6b411a95982a830d987f4214251
+    imagePullPolicy: Always
+    command:
+    - cat
+    tty: true
 """
-        }
     }
-    stages {
-        stage('Checkout') {
-            steps {
-                git 'https://github.com/jenkinsci/docker-jnlp-slave.git'
-            }
+  }
+  stages {
+    stage('Build with Kaniko') {
+      steps {
+        git 'https://github.com/prabhatsharma/sample-microservice'
+        container(name: 'kaniko') {
+            sh '''
+            /kaniko/executor --dockerfile `pwd`/Dockerfile --context `pwd` --destination=123456789498.dkr.ecr.us-west-2.amazonaws.com/sample-microservice:latest --destination=123456789498.dkr.ecr.us-west-2.amazonaws.com/sample-microservice:v$BUILD_NUMBER
+            '''
         }
-        stage('Docker Build') {
-            steps {
-                container('docker-client') {
-                    sh 'docker version && DOCKER_BUILDKIT=1 docker build --progress plain -t testing .'
-                }
-            }
-        }
+      }
     }
+  }
 }
